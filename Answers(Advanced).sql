@@ -421,6 +421,69 @@ WHERE Customers.Country = Suppliers.Country;
 -- What we’d really like to see is the country name, the total suppliers, and
 -- the total customers.
 
-SELECT DISTINCT C.Country CustomerCountry, S.Country SupplierCountry FROM Customers C
-    FULL JOIN Suppliers S ON C.Country = S.Country
-ORDER BY CustomerCountry, SupplierCountry;
+
+SELECT COUNTRYS.Country, IIF(CUST.TotalCustomers IS NULL, 0, CUST.TotalCustomers) TotalCustomers,
+       IIF(SUP.TotalCustomers IS NULL, 0, SUP.TotalCustomers) TotalSuppliers FROM (
+              SELECT Country AS Country
+                FROM Customers
+                UNION
+              SELECT Country
+                FROM Suppliers
+                  ) COUNTRYS
+FULL JOIN (
+    SELECT Country, COUNT(CustomerID) AS TotalCustomers FROM Customers
+        GROUP BY Country
+    ) CUST ON CUST.Country = COUNTRYS.Country
+FULL JOIN (
+    SELECT Country, COUNT(SupplierID) AS TotalCustomers FROM Suppliers
+        GROUP BY Country
+    ) SUP ON SUP.Country = COUNTRYS.Country;
+
+
+-- 55. First order in each country
+-- Looking at the Orders table—we’d like to show details for each order
+-- that was the first in that particular country, ordered by OrderID.
+-- So, we need one row per ShipCountry, and CustomerID, OrderID, and
+-- OrderDate should be of the first order from that country.
+
+
+SELECT ShipCountry, CustomerID, OrderID, OrderDate FROM (
+              SELECT RANK() over ( PARTITION BY ShipCountry ORDER BY OrderDate) AS R,
+                       ShipCountry, CustomerID, OrderID, OrderDate
+                FROM Orders
+                  ) RANK
+WHERE R = 1;
+
+
+-- 56. Customers with multiple orders in 5 day period
+-- There are some customers for whom freight is a major expense when
+-- ordering from Northwind.
+-- However, by batching up their orders, and making one larger order
+-- instead of multiple smaller orders in a short period of time, they could
+-- reduce their freight costs significantly.
+-- Show those customers who have made more than 1 order in a 5 day
+-- period. The sales people will use this to help customers reduce their
+-- costs.
+-- Note: There are more than one way of solving this kind of problem. For
+-- this problem, we will not be using Window functions.
+
+SELECT First.CustomerID, First.OrderID, First.OrderDate, Last.OrderID, Last.OrderDate
+FROM Orders First
+    JOIN Orders Last ON First.CustomerID = Last.CustomerID
+WHERE First.OrderDate < Last.OrderDate AND DATEDIFF(DAY, First.OrderDate, Last.OrderDate) <= 5
+ORDER BY First.CustomerID, First.OrderID;
+
+
+-- 57. Customers with multiple orders in 5 day period, version 2
+-- There’s another way of solving the problem above, using Window
+-- functions. We would like to see the following results.
+
+
+SELECT * FROM (
+              SELECT CustomerID, CONVERT(DATE, OrderDate) AS OrderDate,
+             CONVERT(DATE, LEAD(OrderDate) over ( PARTITION BY CustomerID ORDER BY CustomerID)) NextDate,
+                     DATEDIFF(DAY, OrderDate, LEAD(OrderDate) over ( PARTITION BY CustomerID ORDER BY CustomerID)) Diff
+FROM Orders
+                  ) Ord
+WHERE OrderDate < NextDate AND Diff <= 5
+ORDER BY CustomerID;
